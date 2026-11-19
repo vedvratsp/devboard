@@ -1,0 +1,51 @@
+FROM node:24 as builder
+
+WORKDIR /app
+
+COPY . .
+
+RUN npm install --legacy-peer-deps
+
+RUN npm run build
+
+FROM node:24-alpine AS dev
+
+COPY  package*.json ./
+
+RUN npm install -g vite
+
+COPY  --from=builder /app/dist ./dist
+
+EXPOSE 4174
+
+CMD [ "npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "4174" ]
+
+
+# FROM node:24 AS builder
+# WORKDIR /app
+
+# #
+# COPY package*.json ./
+# RUN npm install --legacy-peer-deps
+
+
+# COPY . .
+# RUN npm run build
+
+# # === Stage 2: The Slim Runtime ===
+# FROM node:24-alpine AS dev
+# WORKDIR /app
+
+# # 1. Copy package definitions and configurations into the runtime workspace
+# COPY package*.json ./
+# COPY vite.config.* ./ 2>/dev/null || true
+
+# # 2. Re-install only production frameworks if required, and add your global tool
+# RUN npm install -g vite
+
+# # 3. FIX: Copy the bundle into the expected './dist' folder inside /app
+# COPY --from=builder /app/dist ./dist
+
+# EXPOSE 4174
+
+# CMD [ "npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "4174" ]
