@@ -18,6 +18,16 @@ browser  →  frontend (React)  →  backend (Go API)  →  database (Postgres)
 There's no login and no AI here on purpose. The whole point is to *see how the
 pieces connect*.
 
+> **Deploying to Kubernetes?** This branch ships the full mega-project guide —
+> EKS built with **Terraform**, Argo CD + Helm + Gateway API, credentials in
+> **AWS Secrets Manager**, **OpenTelemetry** tracing across all three tiers, and
+> a GitHub Actions pipeline that builds SHA-tagged images and commits them back
+> for Argo CD to sync. Fifteen chapters, starting at
+> [`gitops/README.md`](gitops/README.md).
+>
+> **In a hurry?** [`Deploy.md`](Deploy.md) is the command-by-command runbook —
+> every step from an empty AWS account to HTTPS on your own domain.
+
 ---
 
 ## What you need
@@ -224,3 +234,67 @@ The browser calls these as `/api/...`; the backend serves them at the root.
 ├── backend/             Go API (main.go + Dockerfile)
 └── init/postgres/       schema + example data, loaded on first start
 ```
+
+---
+
+## CI/CD — DevSecOps + GitOps
+
+Pushing to the `mega-project` branch runs the pipeline in
+[`.github/workflows/devsecops.yml`](.github/workflows/devsecops.yml):
+
+1. **Gates** (parallel) — code quality, secret scanning, dependency checks,
+   Dockerfile lint + image scan, SonarQube (SAST), and tests.
+2. **Build & push** — once every gate passes, each service image is built and
+   pushed to Docker Hub tagged with the commit SHA.
+3. **GitOps bump** — the new SHA tags are written into `k8s/` and
+   `helm/devboard/values.yaml` and committed back. Argo CD (watching this
+   branch) then syncs the change to the cluster — **CI never touches the
+   cluster directly**.
+
+See [`gitops/14-cicd.md`](gitops/14-cicd.md) for the full walk-through. The
+steps below configure the secrets the pipeline needs.
+
+### How to Install and Set Up SonarQube on EC2
+
+To run your own self-hosted SonarQube server on your AWS EC2 instance:
+
+1. **Start the SonarQube Container**:
+   Ensure Docker is installed on your EC2 instance, then run:
+   ```bash
+   docker run -itd --name SonarQube-Server -p 9000:9000 sonarqube:community
+   ```
+
+2. **Access the Web Interface**:
+   - Make sure port `9000` is open in your **AWS EC2 Security Group** inbound rules.
+   - Access `http://<YOUR_EC2_PUBLIC_IP>:9000` in your browser.
+   - Log in using default credentials: Username: `admin` / Password: `admin` (you will be prompted to change it)
+
+
+### How to configure SonarQube Secrets
+
+To enable SonarQube scanning in your GitHub Actions pipeline:
+
+1. **Get the Host URL**:
+   - If using a self-hosted instance, your `SONAR_HOST_URL` is the URL where SonarQube is hosted (e.g., `http://your-sonarqube-ip:9000`).
+   - If using SonarCloud, use `https://sonarcloud.io`.
+2. **Generate a SonarQube Token**:
+   - In SonarQube: Go to your **Profile (User Icon) > My Account > Security**.
+   - Under **Generate Tokens**, enter a token name, select the **User Token** type, and click **Generate**.
+   - Copy the generated token string.
+3. **Add Secrets to GitHub**:
+   - Go to your GitHub Repository settings.
+   - Navigate to **Settings > Secrets and variables > Actions**.
+   - Add two Repository Secrets:
+     - `SONAR_TOKEN`: Paste the SonarQube token you copied.
+     - `SONAR_HOST_URL`: Paste your SonarQube server URL.
+
+### How to configure Docker Hub Credentials
+
+To allow the CI pipeline to build and push images to Docker Hub:
+1. Navigate to **Settings > Secrets and variables > Actions**.
+2. Under the **Variables** tab, add:
+   - `DOCKERHUB_USERNAME`: Your Docker Hub username.
+3. Under the **Secrets** tab, add:
+   - `DOCKERHUB_TOKEN`: A Personal Access Token (PAT) generated from Docker Hub.
+
+
